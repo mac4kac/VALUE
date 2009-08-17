@@ -16,7 +16,7 @@
 #define numInput 2993 // defined in data/srn.data
 #define numEpochs 23
 #define numTestInput 32 // defined in data/predtest.data
-#define learnRate 0.075
+#define learnRate 0.075 
 
 using namespace nnfw;
 using namespace std;
@@ -29,9 +29,9 @@ CopyLinker* cl1;
 BaseNeuralNet* net;
 BackPropagationAlgo* bp; 
 
-double val[8]; // array for 8 inputs read from file
+double val[16]; // array for 16 inputs read from file
 int visionInput[100]; // 2D map of the visual input
-double targetOutput[10][8]; // 10 sequences for 8 joints in hand
+double targetOutput[10][16]; // 10 sequences for 16 joints in hand
 int testInput[24] = {2,3,2,1,0,1,1,0,2,3,3,0,2,0,1,0,2,2,3,1,3,0,3,1}; // Test input for the network
 
 int bigBallVisionInput[100]= {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,0,0,0,0,1,1,0,0,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0,0,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -71,130 +71,84 @@ int main( int , char*[] ) {
 	cout.precision( 5 );
 
 	FILE *DATA;
-	FILE *f = fopen("results/errorTraining.data","w");
+	FILE *f = fopen("results/errorTraining.data","w"); // fopen("data/SBox/graspingNormSeq.data","w");
 	if (!f) {printf("can't open config file for writing\n");exit(1);}
 	int objectViewed;
+	int graspSeq; // = -1;
 
-	for (int num = 0; num < 60000; num++) {
+	for (int num = 0; num < 50000; num++) {
 		objectViewed = Random::flatInt(0,4);
-		//objectViewed = 0;		
-		//cout << objectViewed << endl;
+		graspSeq = Random::flatInt(0,4);
+		//objectViewed = 3;	
+		//graspSeq++;	
+		//cout << objectViewed << ":" << graspSeq << "\n";
 
 		if (objectViewed == 0) {
 			memcpy(visionInput, bigBallVisionInput, sizeof(int)*100);
+			char filename[100];
+			filename[0]='\0';
+			sprintf(filename,"data/4/BBall/graspingNormSeq%i-BBall.data",graspSeq); //the name of the FILE string
+					
 			// --- LOADING data from the file for training the network
-			DATA = fopen("data/graspBigBall.data", "r" );
+			DATA = fopen(filename, "r" );
 			if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}
 		}
 		if (objectViewed == 1) {
 			memcpy(visionInput, bigBoxVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspBigBox.data", "r" );
+			char filename[100];
+			filename[0]='\0';
+			sprintf(filename,"data/4/BBox/graspingNormSeq%i-BBox.data",graspSeq); //the name of the FILE string
+					
+			// --- LOADING data from the file for training the network
+			DATA = fopen(filename, "r" );
 			if (!DATA) {std::cout << "can't open hand file for reading 1\n" << std::endl; exit(1);}
 		}
 		if (objectViewed == 2) {
 			memcpy(visionInput, smallBallVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspSmallBall.data", "r" );
+			char filename[100];
+			filename[0]='\0';
+			sprintf(filename,"data/4/SBall/graspingNormSeq%i-SBall.data",graspSeq); //the name of the FILE string
+					
+			// --- LOADING data from the file for training the network
+			DATA = fopen(filename, "r" );
 			if (!DATA) {std::cout << "can't open hand file for reading 2\n" << std::endl; exit(1);}		
 		}
 		if (objectViewed == 3) {
 			memcpy(visionInput, smallBoxVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspSmallBox.data", "r" );
+			char filename[100];
+			filename[0]='\0';
+			sprintf(filename,"data/4/SBox/graspingNormSeq%i-SBox.data",graspSeq); //the name of the FILE string
+					
+			// --- LOADING data from the file for training the network
+			DATA = fopen(filename, "r" );
 			if (!DATA) {std::cout << "can't open hand file for reading 3\n" << std::endl; exit(1);}
-		}			
-		// --- READ the data from the file
-		for (int line = 0; line < 10; line++) {		
-			for (int input = 0; input < 8; input++) {
-				fscanf(DATA, "%lf", &val[input]); 
-				targetOutput[line][input]= val[input];	
-			}	
-		}
-/*
-		// Print it 10 times for 10 grasping sequences
-		//for (int i=0; i<10; i++) {
-			for (int x=1; x<101; x++) {		
-				cout << visionInput[x-1]; 
-				if (x % 100 == 0) {cout << endl;}		
-			}
-		//}
-
-		for (int l=0; l<10; l++) {
-			for (int x=0; x<8; x++) {
-				cout << targetOutput[l][x] << " ";
-				//if (x % 10 == 0) {cout << endl;}
-			}
-			cout << endl;
-			//cout << endl;
-		}
-*/
-/*
-		//for (int x=1; x<101; x++) {
-		//	cout << visionInput[x-1] << " ";
-		//	if (x % 10 == 0) {cout << endl;}		
-		//}
-		// Print it 10 times for 10 grasping sequences
-		for (int i=0; i<10; i++) {
-			for (int x=1; x<101; x++) {		
-				fprintf(f, "%d ", visionInput[x-1]); 
-				if (x % 100 == 0) {fprintf(f, "\n");}		
-			}
-		}
-		// --- READ the data from the file
-		for (int line = 0; line < 10; line++) {		
-			for (int input = 0; input < 8; input++) {
-				fscanf(DATA, "%lf", &val[input]); 
-				targetOutput[line][input]= val[input];	
-			}	
 		}	
-		for (int l=0; l<10; l++) {
-			for (int x=0; x<8; x++) {
-				cout << targetOutput[l][x] << " ";
-				//if (x % 10 == 0) {cout << endl;}
+
+		// --- READ the data from the file
+		for (int line = 0; line < 10; line++) {	
+			for (int input = 1; input <= 16; input++) {
+				fscanf(DATA, "%lf", &val[input-1]); 
+				targetOutput[line][input-1]= val[input-1];
+				//cout << targetOutput[line][input-1] << " ";
+				//if (input % 16 == 0) {cout<<endl;}
 			}
-			cout << endl;
-			//cout << endl;
 		}
-*/
+		
+		/*
+		// --- NORMALISE the output (x+1)/2 and print 10 sequences for grasping 
+		for (int i=0; i<10; i++) {
+			for (int x=1; x<=16; x++) {		
+				fprintf(f, "%lf ", (targetOutput[i][x-1]+1)/2); 
+				if (x % 16 == 0) {fprintf(f, "\n");}		
+			}
+		}
+		fprintf(f, "\n");
+		*/
 
-/*		
-	// --- LOADING data from the file for training the network
-	FILE *DATA = fopen("data/graspBigBall.data", "r" );
-	if (!DATA) {std::cout << "can't open hand file for reading\n" << std::endl; exit(1);}
-	
-	for (int line = 0; line < 10; line++) {
-		// --- COPY visual input into inputLearnSet
-		for (int x = 0; x < 100; x++) {	
-			inputLearnSet[line][x] = bigBallVisionInput[x];	
-		}
-		// --- READ the data from the file
-		for (int input = 0; input < 8; input++) {
-			fscanf(DATA, "%lf", &val[input]); 
-			inputLearnSet[line][input+100]= val[input];	
-		}
-	}	
-
-	for (int l=0; l<10; l++) {
-		for (int x=0; x<108; x++) {
-			cout << inputLearnSet[l][x] << " ";
-			//if (x % 10 == 0) {cout << endl;}
-		}
-		cout << endl;
-		cout << endl;
-	}
-
-	for (int line = 0; line < numInput; line++){
-		// --- READ the data from the file
-		fscanf(DATA,"%lf %lf %lf  %lf\n",&val[0], &val[1], &val[2], &val[3]);
-		for (int input = 0; input<(int)in->numNeurons(); input++) {		
-			inputLearnSet[line][input]= val[input];
-		//	cout << inputLearnSet[line][input] << " " ;
-		}
-		// cout << endl;
-	}
-*/
 		// --- MAIN LOOP IN ORDER TO LEARN THE TASK 
 		for (int input=0; input<(int)in->numNeurons(); input++) 
 			in->setInput(input,visionInput[input]);
-
+	
 		// For each object step the net 10 times --- representing 10 grasping sequences		
 		for (int seq=0; seq<10; seq++) {	
 			net->step();	
@@ -205,7 +159,8 @@ int main( int , char*[] ) {
 
 			for (int i=0; i<(int)out->numNeurons(); i++) 
 				target[i] = targetOutput[seq][i];
-	
+				
+			//cout << target << endl;
 			bp->setTeachingInput(out,target);
 			bp->learn();
 		
@@ -229,13 +184,15 @@ int main( int , char*[] ) {
 				fprintf(f, "%f\n", RMSEav); 			
 				//cout << RMSEav << endl;	
 			} 
-		}
+		} //cout << endl;
 		cont->resetInputs();
 		fclose(DATA);
+
 	}
 	fclose(f);
-	nnfw::saveXML("results/jordanNet.xml",net);
-	testJordan();			
+	nnfw::saveXML("results/4/jordanNet.xml",net);
+	testJordan();	
+	
 	return 0;
 }
 
@@ -245,75 +202,112 @@ void testJordan() {
 	FILE *DATA;
 	FILE *f = fopen("results/errorTest.data","w");
 	if (!f) {printf("can't open config file for writing\n");exit(1);}
-	int objectViewed = 4;	
+	int objectViewed = 0;	
+	int graspSeqTest[5] = {0,1,2,3,4}; //= 0;
 	
-	for (int num = 0; num < 4; num++) {
-		//objectViewed = Random::flatInt(0,4);
-		objectViewed--; // = 0;//testInput[num];			
-		cout << objectViewed << endl;
+	for (int test = 0; test < 4; test++) {
+		for (int num = 0; num < 5; num++) {
+			//objectViewed = Random::flatInt(0,4);
+			//objectViewed++; // = 0;//testInput[num];			
+			//cout << objectViewed << ":";
 
-		if (objectViewed == 0) {
-			memcpy(visionInput, bigBallVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspBigBall.data", "r" );
-		}
-		if (objectViewed == 1) {
-			memcpy(visionInput, bigBoxVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspBigBox.data", "r" );
-		}
-		if (objectViewed == 2) {
-			memcpy(visionInput, smallBallVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspSmallBall.data", "r" );
-		}
-		if (objectViewed == 3) {
-			memcpy(visionInput, smallBoxVisionInput, sizeof(int)*100);
-			DATA = fopen("data/graspSmallBox.data", "r" );
-		}			
-		// --- READ the data from the file
-		for (int line = 0; line < 10; line++) {		
-			for (int input = 0; input < 8; input++) {
-				fscanf(DATA, "%lf", &val[input]); 
-				targetOutput[line][input]= val[input];	
-			}	
-		}
-		// --- MAIN LOOP IN ORDER TO LEARN THE TASK 
-		for (int input=0; input<(int)in->numNeurons(); input++)
-			in->setInput(input,visionInput[input]);
-
-		for (int seq=0; seq<10; seq++) {		
-			net->step();
-			// --- COMPARE THE OUTPUT WITH THE TEACHING SET
-			RealVec outputs(out->numNeurons());			outputs = out->outputs();					RealVec target(out->numNeurons());
-	
-			for (int i=0; i<out->numNeurons(); i++) 
-				target[i] = targetOutput[seq][i];
-
-			//cout << outputs << endl;
-			//cout << target << endl;
-
-			//cout << cont->inputs() << endl;
-			//cout << cont->outputs() << endl;
-			cout << out->outputs() << endl;
-			//cout << endl;	
-
-			// --- PRINT errors
-			RealVec deltas(out->numNeurons());
-			RealVec MSE(out->numNeurons());
-			MSE.zeroing();	
-			deltas.zeroing();
-			deltas = target;
-			deltas-=outputs; // calculate delta (difference from output to target)
-			MSE+=deltas.square(); // square the delta for one line of input
-			RealVec RMSE (out->numNeurons());
-			float RMSEav = 0.0;
-
-			for (int z = 0; z < (int)out->numNeurons(); z++) {
-				RMSE[z] = sqrt(MSE[z]); // calculate sqrt of MeanSquareError for each output neuron
-				RMSEav +=RMSE[z]; // and add RMSE for each output neuron
+			if (objectViewed == 0) {
+				memcpy(visionInput, bigBallVisionInput, sizeof(int)*100);		
+				char filename[100];
+				filename[0]='\0';
+				sprintf(filename,"data/4/BBall/graspingNormSeq%i-BBall.data",graspSeqTest[num]); //the name of the FILE string	
+				// --- LOADING data from the file for training the network
+				DATA = fopen(filename, "r" );
+				if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}
 			}
-			RMSEav /=out->numNeurons(); // average the sqrt MeanSquareError of the output layer for one input
-			//cout << RMSEav << endl;
-			fprintf(f, "%f\n", RMSEav); 
-		} 	cout << endl;
+			if (objectViewed == 1) {
+				memcpy(visionInput, bigBoxVisionInput, sizeof(int)*100);
+				char filename[100];
+				filename[0]='\0';
+				sprintf(filename,"data/4/BBox/graspingNormSeq%i-BBox.data",graspSeqTest[num]); //the name of the FILE string		
+				// --- LOADING data from the file for training the network
+				DATA = fopen(filename, "r" );
+				if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}
+			}
+			if (objectViewed == 2) {
+				memcpy(visionInput, smallBallVisionInput, sizeof(int)*100);
+				char filename[100];
+				filename[0]='\0';
+				sprintf(filename,"data/4/SBall/graspingNormSeq%i-SBall.data",graspSeqTest[num]); //the name of the FILE string	
+				// --- LOADING data from the file for training the network
+				DATA = fopen(filename, "r" );
+				if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}
+			}
+			if (objectViewed == 3) {
+				memcpy(visionInput, smallBoxVisionInput, sizeof(int)*100);
+				char filename[100];
+				filename[0]='\0';
+				sprintf(filename,"data/4/SBox/graspingNormSeq%i-SBox.data",graspSeqTest[num]); //the name of the FILE string	
+				// --- LOADING data from the file for training the network
+				DATA = fopen(filename, "r" );
+				if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}
+			}
+			//cout << graspSeqTest[num] << endl;
+
+			// --- READ the data from the file
+			for (int line = 0; line < 10; line++) {		
+				for (int input = 1; input <= 16; input++) {
+					fscanf(DATA, "%lf", &val[input-1]); 
+					targetOutput[line][input-1]= val[input-1];	
+					//cout << targetOutput[line][input-1] << " ";
+					//if (input % 16 == 0) {cout<<endl;}
+				}	
+			}
+
+			// --- PRINT visionInput 
+			//for (int x=1; x<=100; x++) {
+			//	cout << visionInput[x-1] << " ";
+			//	if (x % 10 == 0) {cout<<endl;}
+			//}
+
+			// --- MAIN LOOP IN ORDER TO LEARN THE TASK 
+			for (int input=0; input<(int)in->numNeurons(); input++)
+				in->setInput(input,visionInput[input]);
+
+			for (int seq=0; seq<10; seq++) {		
+				net->step();
+				// --- COMPARE THE OUTPUT WITH THE TEACHING SET
+				RealVec outputs(out->numNeurons());				outputs = out->outputs();						RealVec target(out->numNeurons());
+	
+				for (int i=0; i<out->numNeurons(); i++) 
+					target[i] = targetOutput[seq][i];
+
+				//cout << outputs << endl;
+				//cout << target << endl;
+
+				//cout << cont->inputs() << endl;
+				//cout << cont->outputs() << endl;
+				//cout << out->outputs() << endl;
+				//cout << endl;	
+				//cout << hid->outputs() << endl;
+
+				// --- PRINT errors
+				RealVec deltas(out->numNeurons());
+				RealVec MSE(out->numNeurons());
+				MSE.zeroing();	
+				deltas.zeroing();
+				deltas = target;
+				deltas-=outputs; // calculate delta (difference from output to target)
+				MSE+=deltas.square(); // square the delta for one line of input
+				RealVec RMSE (out->numNeurons());
+				float RMSEav = 0.0;
+
+				for (int z = 0; z < (int)out->numNeurons(); z++) {
+					RMSE[z] = sqrt(MSE[z]); // calculate sqrt of MeanSquareError for each output neuron
+					RMSEav +=RMSE[z]; // and add RMSE for each output neuron
+				}
+				RMSEav /=out->numNeurons(); // average the sqrt MeanSquareError of the output layer for one input
+				//cout << RMSEav << endl;
+				fprintf(f, "%f\n", RMSEav); 
+			} 	
+			//cout << endl;
 			cont->resetInputs();
-	}	
+		} 
+		objectViewed++;	
+	} 
 }

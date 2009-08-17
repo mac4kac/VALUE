@@ -5,16 +5,16 @@
             <outfunction type="SigmoidFunction"/>        </cluster>
 
         <!-- The Hidden Layer of the Network -->
-        <cluster name="Hidden" type="BiasedCluster" size="5">
+        <cluster name="Hidden" type="BiasedCluster" size="10">
             <outfunction type="SigmoidFunction"/>        </cluster>
 
 	<!-- The Context Layer of the Network -->
-        <cluster name="Context" type="SimpleCluster" size="8">
+        <cluster name="Context" type="SimpleCluster" size="16">
             <outfunction type="IdentityFunction"/>
         </cluster>
 
         <!-- The Output Layer of the Network -->
-        <cluster name="Output" type="BiasedCluster" size="8" >
+        <cluster name="Output" type="BiasedCluster" size="16" >
             <outfunction type="SigmoidFunction"/>
         </cluster>
     
