@@ -1,0 +1,50 @@
+<nnfw version="1.0">
+    <neuralnet>
+        <!-- The Input Layer of the Network -->
+        <cluster name="Input" type="BiasedCluster" size="100" >
+            <outfunction type="SigmoidFunction"/>        </cluster>
+
+        <!-- The Hidden Layer of the Network -->
+        <cluster name="Hidden" type="BiasedCluster" size="5">
+            <outfunction type="SigmoidFunction"/>        </cluster>
+
+	<!-- The Context Layer of the Network -->
+        <cluster name="Context" type="SimpleCluster" size="8">
+            <outfunction type="IdentityFunction"/>
+        </cluster>
+
+        <!-- The Output Layer of the Network -->
+        <cluster name="Output" type="BiasedCluster" size="8" >
+            <outfunction type="SigmoidFunction"/>
+        </cluster>
+    
+        <!-- Full Connection from Input to Hidden -->
+        <linker name="In2Hid" type="MatrixLinker" from="Input" to="Hidden">
+            <!-- Randomize the values of weights in the range specified -->
+            <randomize min="-1.0" max="+1.0" />
+        </linker>
+
+	 <!-- Full Connection from Context to Hidden -->
+        <linker name="Cont2Hid" type="MatrixLinker" from="Context" to="Hidden">
+            <!-- Randomize the values of weights in the range specified -->
+            <randomize min="-1.0" max="+1.0" />
+        </linker>
+
+        <!-- Full Connection from Hidden to Ouput -->
+        <linker name="Hid2Out" type="MatrixLinker" from="Hidden" to="Output">
+            <!-- Randomize the values of weights in the range specified -->
+            <randomize min="-1.0" max="+1.0" />
+        </linker>
+
+	<!-- Full Connection from Output to Context -->
+        <linker name="Out2Cont" type="CopyLinker" from="Output" to="Context">
+        </linker>
+
+        <!-- Specify which are the Input layers -->
+        <inputs> Input </inputs>
+        <!-- Specify which are the Output layers -->
+        <outputs> Output </outputs>
+        <!-- Specify the update order during spreading of the net -->
+        <order> Input In2Hid Context Cont2Hid Hidden Hid2Out Output Out2Cont </order>
+    </neuralnet>
+</nnfw>
