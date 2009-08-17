@@ -10,11 +10,21 @@
 #include <ctype.h>
 #include <fstream>
 #include "nnfw.h"
+#include "nnfwfactory.h"
 #include "biasedcluster.h"
 #include "simplecluster.h"
+#include "fakecluster.h"
 #include "dotlinker.h"
 #include "copylinker.h"
+#include "normlinker.h"
 #include "liboutputfunctions.h"
+#include "libradialfunctions.h"
+#include "random.h"
+#include "time.h"
+#include "types.h"
+#include "ionnfw.h"
+#include "propertized.h"
+
 
 using namespace yarp;
 using namespace yarp::os;
@@ -52,7 +62,112 @@ DotLinker *l1, *l2, *l3;
 CopyLinker* cl1;
 BaseNeuralNet* net;
 
+// IT SOM - Object Identity
+BaseNeuralNet* IT_net;
+SimpleCluster* IT_input;
+NormLinker* IT_l1;
+// MT SOM - Experimenter Instruction
+BaseNeuralNet* MT_net;
+SimpleCluster* MT_input;
+NormLinker* MT_l1;
+// PFC SOM - Current Goal
+BaseNeuralNet* PFC_net;
+SimpleCluster* PFC_input;
+NormLinker* PFC_l1;
+
+
+int expInstr[2];
+int ExpInstr_Graps[2]= {0,1};
+int ExpInstr_Cat[2]= {1,0};
+
+int inputSize=200; // 200 outputs from vision + PFC SOM
+int PFC_inputSize=200; // 200 outputs from IT+MT SOM
+int IT_inputSize=100; // 2D map of visual input
+int MT_inputSize=2; // tasks
+
+
+
 void setPixelValue(IplImage* image, int x, int y, int channel, int value);
+
+
+class CompetitiveCluster : public SimpleCluster {
+	public:
+		CompetitiveCluster(int r, int c, const char* name) : SimpleCluster(r*c,name), rows(r), cols(c) {
+			outmatrix = new RealMat( outputs(), 0, rows*cols, rows, cols );
+			addProperty( "rows", Variant::t_int, this, &CompetitiveCluster::getRows );
+			addProperty( "cols", Variant::t_int, this, &CompetitiveCluster::getColums );
+			setTypename("CompetitiveCluster");
+		}
+
+		CompetitiveCluster( PropertySettings& prop ) : SimpleCluster(prop) {
+			Variant& v = prop["rows"];
+			if ( v.isNull() ) {
+			//nFatal() << "Skata ";
+			}
+			rows = convertStringTo( v, Variant::t_int ).getInt();
+			v = prop["cols"];
+			if ( v.isNull() ) {
+			//nFatal() << "Skata ";
+			}
+			cols = convertStringTo( v, Variant::t_int ).getInt();
+			outmatrix = new RealMat( outputs(), 0, rows*cols, rows, cols );
+			addProperty( "rows", Variant::t_int, this, &CompetitiveCluster::getRows );
+			addProperty( "cols", Variant::t_int, this, &CompetitiveCluster::getColums );
+			setTypename("CompetitiveCluster");
+		};
+	
+		Variant getRows() {
+			return Variant( rows );
+		};
+
+		Variant getColums(){
+			return Variant ( cols);
+		};
+
+		void update() {
+			SimpleCluster::update();
+			RealMat& refmat = *outmatrix;
+			//competition among outputs
+			centreX = 0.0;
+			centreY = 0.0;
+			int cx = 0;
+			int cy = 0;
+			for( int r=0; r<rows; r++ ) { 
+				for( int c=0; c<cols; c++ ) {
+					if ( refmat[r][c] > refmat[cx][cy] ) {
+						cx = r;
+						cy = c;
+					}
+					//centreX += c*refmat[r][c]; //find the center position
+					//centreY += r*refmat[r][c];
+				}
+			}
+			//centreX /= numNeurons();
+			//centreY /= numNeurons();
+			centreX = (Real)cx;
+			centreY = (Real)cy;
+		};
+	
+		void getCentre( Real& x, Real& y ) {
+			x = centreX;
+			y = centreY;
+		};	
+
+	private:
+		RealMat* outmatrix;
+		int rows;
+		int cols;
+		Real centreX;
+		Real centreY;
+};
+
+Creator <CompetitiveCluster> c;
+bool dummy = Factory::registerCluster(c,"CompetitiveCluster");
+
+CompetitiveCluster* PFC_m1;
+CompetitiveCluster* IT_m1;
+CompetitiveCluster* MT_m1;
+
 
 
 int main(int argc, char* argv[])
@@ -79,76 +194,41 @@ int main(int argc, char* argv[])
 	worldPort.open("/rpc/world");
 	Network::connect("/rpc/world", "/icubSim/world");
 	Bottle& objectBot = worldPort.prepare();	
-/*
-	// Big ball
-	objectBot.clear();
-	objectBot.addString("world");
-    objectBot.addString("mk");
-	objectBot.addString("ball");	
-	objectBot.addDouble(0.04);
-	objectBot.addDouble(-0.02);
-	//objectBot.addDouble(0.65);	
-	objectBot.addDouble(0.555);
-	objectBot.addDouble(0.25);
-	objectBot.addDouble(0.9);
-	objectBot.addDouble(0.0);
-	objectBot.addDouble(0.0);
-	worldPort.write();
-	Time::delay(0.5);
-*/
 
-	// Big box
-	objectBot.clear();
-	objectBot.addString("world");
-    objectBot.addString("mk");
-	objectBot.addString("box");	
-	objectBot.addDouble(0.05);
-	objectBot.addDouble(0.05);
-	objectBot.addDouble(0.05);	
-	objectBot.addDouble(-0.02);
-	//objectBot.addDouble(0.65);
-	objectBot.addDouble(0.54);
-	objectBot.addDouble(0.25);
-	objectBot.addDouble(0.9);
-	objectBot.addDouble(0.0);
-	objectBot.addDouble(0.0);
-	worldPort.write();
-	Time::delay(0.5);	
-/*
-	// Small ball
-	objectBot.clear();
-	objectBot.addString("world");
-    objectBot.addString("mk");
-	objectBot.addString("ball");	
-	objectBot.addDouble(0.02);	
-	objectBot.addDouble(-0.02);
-	objectBot.addDouble(0.535);
-	objectBot.addDouble(0.25);
-	objectBot.addDouble(0.9);
-	objectBot.addDouble(0.0);
-	objectBot.addDouble(0.0);
+	//int targetObject = 3; // 0 = BigBall; 1 = BigBox; 2 = SmallBall; 3 = SmallBox
+	int targetObject;
+	cout << "Enter the object you want to create, where:\n 0 = Big Ball\n 1 = Big Box\n 2 = Small Ball\n 3 = Small Box\n";
+	cout << "Target Object: "; 
+	cin >> targetObject;
+	
+	double radius, xlength, ylength, zlength;
+	double xpos, ypos, zpos;
+	double rcol = 0.9;
+	double gcol = 0.0;
+	double bcol = 0.0;
+
+	objectBot.clear();	objectBot.addString("world");    objectBot.addString("mk");
+	if (targetObject == 0) {objectBot.addString("ball"); radius = 0.04; xpos = -0.02; ypos = 0.555; zpos = 0.25;}
+	if (targetObject == 1) {objectBot.addString("box"); xlength = 0.05, ylength = 0.05, zlength = 0.05; xpos = -0.02; ypos = 0.54; zpos = 0.25;}
+	if (targetObject == 2) {objectBot.addString("ball"); radius = 0.02; xpos = -0.02; ypos = 0.535; zpos = 0.25;}
+	if (targetObject == 3) {objectBot.addString("box"); xlength = 0.025, ylength = 0.025, zlength = 0.025; xpos = -0.02; ypos = 0.528; zpos = 0.25;}
+
+	if (targetObject == 0 || targetObject == 2) {objectBot.addDouble(radius);}
+	else { 
+		objectBot.addDouble(xlength);
+		objectBot.addDouble(ylength);
+		objectBot.addDouble(zlength);
+	}
+
+	objectBot.addDouble(xpos);
+	objectBot.addDouble(ypos);
+	objectBot.addDouble(zpos);
+	objectBot.addDouble(rcol);
+	objectBot.addDouble(bcol);
+	objectBot.addDouble(gcol);
 	worldPort.write();
 	Time::delay(0.5);
 
-
-	// Small box
-	objectBot.clear();
-	objectBot.addString("world");
-    objectBot.addString("mk");
-	objectBot.addString("box");	
-	objectBot.addDouble(0.025);
-	objectBot.addDouble(0.025);
-	objectBot.addDouble(0.025);	
-	objectBot.addDouble(-0.02);
-	//objectBot.addDouble(0.65);	
-	objectBot.addDouble(0.528);
-	objectBot.addDouble(0.25);
-	objectBot.addDouble(0.9);
-	objectBot.addDouble(0.0);
-	objectBot.addDouble(0.0);
-	worldPort.write();
-	Time::delay(0.5);
-*/
 	/********** Move head and eyes to view the object **********/
 
 	bot.clear();
@@ -193,7 +273,7 @@ int main(int argc, char* argv[])
 	cvNamedWindow("Sobel", 1);
 	cvNamedWindow("Real Image", 1);
 	cvMoveWindow("Real Image", 650, 200);
-	cvNamedWindow("SOBEL VIZ", 1);
+	cvNamedWindow("VISUAL INPUT", 1);
 	cvNamedWindow("Cont", 1);
 
 	IplImage* dx= cvCreateImage( cvSize(image->width,image->height), IPL_DEPTH_16S, 1);
@@ -220,7 +300,7 @@ int main(int argc, char* argv[])
    	cvSplit(image, BlueImage, GreenImage, RedImage, 0);
 
 	IplImage* SobelViz = cvCreateImage(cvSize((image->width),(image->height)), IPL_DEPTH_8U, 1);
-    
+	
 	cvSobel( RedImage, dx, 1, 0, 3);
     cvConvertScaleAbs( dx , dest_dx, 1, 0);
     cvSobel( RedImage, dy, 0, 1, 3);
@@ -310,7 +390,7 @@ int main(int argc, char* argv[])
 	}	
 
 	cvShowImage("Sobel", AverageTotalGrey);
-	cvShowImage("SOBEL VIZ", SobelViz);
+	cvShowImage("VISUAL INPUT", SobelViz);
 	cvShowImage("Real Image", image);
 
 	cvSaveImage("SobelViz.jpg", SobelViz);
@@ -376,7 +456,6 @@ int main(int argc, char* argv[])
   	IEncoders *enc;
 	double ENCODERS[16];
 
-
 	robotArm.view(pos);
 	robotArm.view(vel);
   	robotArm.view(enc);
@@ -408,177 +487,6 @@ int main(int argc, char* argv[])
 	pos->positionMove(reachPos2);
 	Time::delay(1.5);
 
-	//sp=-34.5; sr=13.0; sy=47.0; elbw=39.0; wpro=74.0; wptch=-17.0; wy=20.0; fabd=0.0;
-	//to=80.0; tp=20.0; td=24.0; ip=52.0; id=34.0; mp=0.0; md=0.0; p=0.0;
-/*
-	// Torso bends down to grasp BigBox, SmallBall & SmallBox	
-	bot.clear();
-	bot.addVocab(Vocab::encode("set"));
-	bot.addVocab(Vocab::encode("pos"));
-	bot.addInt(2);
-	bot.addDouble(3);
-	commandsTorso.write(bot);
-	Time::delay(0.5);
-
-	// Grasp 1
-	double reachPos3[] = {-45.5, 3.5, 7.0, 8.0, 90.0, -36.0, -15.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos3);
-	Time::delay(1.5);
-	
-	double reachPos4SBox[] = {-45.5, 3.5, 7.0, 8.0, 90.0, -36.0, -15.0, 0.0, 83.0, 6.0, 17.0, 63.0, 34.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos4SBox);
-	Time::delay(1.5);	
-	
-	//double reachPos4SBall[] = {-47.5, 3.5, 7.0, 8.0, 90.0, -29.0, -15.0, 0.0, 64.0, 1.0, 36.0, 62.0, 31.0, 0.0, 0.0, 0.0};	
-	//pos->positionMove(reachPos4SBall);
-	//Time::delay(1.5);
-
-	//double reachPos4BBox[] = {-47.0, 0.0, 7.0, 8.0, 90.0, -29.0, -15.0, 0.0, 62.0, 0.0, 43.0, 49.0, 32.0, 49.0, 35.0, 49.0};	
-	//pos->positionMove(reachPos4BBox);
-	//Time::delay(1.5);
-
-	//double reachPos4BBall[] = {-47.0, 0.0, 7.0, 8.0, 90.0, -29.0, -15.0, 0.0, 53.0, 0.0, 33.0, 49.0, 30.0, 49.0, 31.0, 41.0};	
-	//pos->positionMove(reachPos4BBall);
-	//Time::delay(1.5);
-	
-	// Grasp 2
-	double reachPos3[] = {-41.0, 14.0, 49.0, 25.0, 57.0, -23.0, -8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos3);
-	Time::delay(1.5);
-
-	double reachPos4SBox[] = {-41.0, 14.0, 49.0, 25.0, 57.0, -23.0, -8.0, 0.0, 81.0, 31.0, 14.0, 29.0, 52.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos4SBox);
-	Time::delay(1.5);
-
-	//double reachPos4SBall[] = {-41.0, 14.0, 49.0, 25.0, 57.0, -23.0, -8.0, 0.0, 52.0, 36.0, 28.0, 28.0, 47.0, 0.0, 0.0, 0.0};	
-	//pos->positionMove(reachPos4SBall);
-	//Time::delay(1.5);
-
-	//double reachPos4BBox[] = {-41.0, 11.0, 49.0, 29.0, 57.0, -23.0, -8.0, 0.0, 64.0, 16.0, 44.0, 35.0, 39.0, 35.0, 37.0, 42.0};	
-	//pos->positionMove(reachPos4BBox);
-	//Time::delay(1.5);
-
-	//double reachPos4BBall[] = {-41.0, 11.0, 49.0, 29.0, 57.0, -23.0, -8.0, 0.0, 56.0, 10.0, 34.0, 33.0, 32.0, 33.0, 32.0, 34.0};	
-	//pos->positionMove(reachPos4BBall);
-	//Time::delay(1.5);
-
-	// Grasp 3
-	double reachPos3[] = {-33.0, 9.0, 25.0, 33.0, 81.0, -25.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos3);
-	Time::delay(1.5);
-
-	double reachPos4SBox[] = {-33.0, 9.0, 25.0, 33.0, 81.0, -25.0, 1.0, 0.0, 89.0, 17.0, 11.0, 55.0, 32.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos4SBox);
-	Time::delay(1.5);
-
-	//double reachPos4SBall[] = {-33.0, 11.0, 30.0, 36.0, 84.0, -26.0, 0.0, 0.0, 62.0, 22.0, 33.0, 55.0, 24.0, 0.0, 0.0, 0.0};	
-	//pos->positionMove(reachPos4SBall);
-	//Time::delay(1.5);
-
-	//double reachPos4BBox[] = {-36.0, 11.0, 35.0, 36.0, 73.0, -15.0, -18.0, 12.0, 86.0, 20.0, 34.0, 31.0, 48.0, 21.0, 39.0, 37.0};	
-	//pos->positionMove(reachPos4BBox);
-	//Time::delay(1.5);
-
-	//double reachPos4BBall[] = {-36.0, 11.0, 35.0, 36.0, 73.0, -15.0, -18.0, 0.0, 75.0, 12.0, 22.0, 24.0, 35.0, 25.0, 33.0, 29.0};	
-	//pos->positionMove(reachPos4BBall);
-	//Time::delay(1.5);
-
-	// Grasp 4
-	double reachPos3[] = {-33.0, 3.0, 25.0, 34.0, 90.0, -17.0, 26.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos3);
-	Time::delay(1.5);
-
-	double reachPos4SBox[] = {-33.0, 3.0, 25.0, 34.0, 90.0, -17.0, 26.0, 0.0, 68.0, 14.0, 33.0, 61.0, 34.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos4SBox);
-	Time::delay(1.5);
-
-	//double reachPos4SBall[] = {-33.0, 3.0, 25.0, 34.0, 77.0, -17.0, 26.0, 0.0, 74.0, 9.0, 31.0, 52.0, 32.0, 0.0, 0.0, 0.0};	
-	//pos->positionMove(reachPos4SBall);
-	//Time::delay(1.5);
-
-	//double reachPos4BBox[] = {-34.0, 3.0, 25.0, 34.0, 77.0, -17.0, 3.0, 5.0, 87.0, 9.0, 25.0, 47.0, 41.0, 33.0, 36.0, 39.0};	
-	//pos->positionMove(reachPos4BBox);
-	//Time::delay(1.5);
-
-	//double reachPos4BBall[] = {-34.0, 3.0, 25.0, 34.0, 77.0, -17.0, 3.0, 5.0, 73.0, 17.0, 21.0, 37.0, 35.0, 40.0, 28.0, 34.0};	
-	//pos->positionMove(reachPos4BBall);
-	//Time::delay(1.5);	
-
-	// Grasp 5
-	double reachPos3[] = {-34.5, 13.0, 47.0, 39.0, 76.0, -17.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos3);
-	Time::delay(1.5);
-
-	double reachPos4SBox[] = {-34.5, 13.0, 47.0, 39.0, 74.0, -17.0, 20.0, 0.0, 80.0, 20.0, 24.0, 52.0, 34.0, 0.0, 0.0, 0.0};	
-	pos->positionMove(reachPos4SBox);
-	Time::delay(1.5);
-
-	//double reachPos4SBall[] = {-34.5, 13.0, 47.0, 39.0, 65.0, -17.0, 20.0, 0.0, 65.0, 26.0, 25.0, 47.0, 34.0, 0.0, 0.0, 0.0};	
-	//pos->positionMove(reachPos4SBall);
-	//Time::delay(1.5);
-
-	//double reachPos4BBox[] = {-35.0, 13.0, 47.0, 39.0, 73.0, -24.0, 2.0, 3.0, 87.0, 11.0, 22.0, 36.0, 33.0, 19.0, 44.0, 39.0};	
-	//pos->positionMove(reachPos4BBox);
-	//Time::delay(1.5);
-
-	//double reachPos4BBall[] = {-35.0, 13.0, 47.0, 39.0, 73.0, -24.0, 2.0, 3.0, 74.0, 8.0, 16.0, 33.0, 27.0, 31.0, 28.0, 32.0};	
-	//pos->positionMove(reachPos4BBall);
-	//Time::delay(1.5);
-*/
-/*
-	// Grasping movement split into 10 steps
-	double pos1[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-9*(to/10.0), tp-9*(tp/10.0), td-9*(td/10.0), ip-9*(ip/10.0), id-9*(id/10.0), mp-9*(mp/10.0), md-9*(md/10.0), p-9*(p/10.0)};	
-	pos->positionMove(pos1);
-	cout << (to-9*(to/10.0))/100 << " " << (tp-9*(tp/10.0))/100 << " " << (td-9*(td/10.0))/100 << " " << (ip-9*(ip/10.0))/100 << " " << (id-9*(id/10.0))/100 << " " << (mp-9*(mp/10.0))/100 << " " << (md-9*(md/10.0))/100 << " " << (p-9*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos2[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-8*(to/10.0), tp-8*(tp/10.0), td-8*(td/10.0), ip-8*(ip/10.0), id-8*(id/10.0), mp-8*(mp/10.0), md-8*(md/10.0), p-8*(p/10.0)};	
-	pos->positionMove(pos2);
-	cout << (to-8*(to/10.0))/100 << " " << (tp-8*(tp/10.0))/100 << " " << (td-8*(td/10.0))/100 << " " << (ip-8*(ip/10.0))/100 << " " << (id-8*(id/10.0))/100 << " " << (mp-8*(mp/10.0))/100 << " " << (md-8*(md/10.0))/100 << " " << (p-8*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos3[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-7*(to/10.0), tp-7*(tp/10.0), td-7*(td/10.0), ip-7*(ip/10.0), id-7*(id/10.0), mp-7*(mp/10.0), md-7*(md/10.0), p-7*(p/10.0)};	
-	pos->positionMove(pos3);
-	cout << (to-7*(to/10.0))/100 << " " << (tp-7*(tp/10.0))/100 << " " << (td-7*(td/10.0))/100 << " " << (ip-7*(ip/10.0))/100 << " " << (id-7*(id/10.0))/100 << " " << (mp-7*(mp/10.0))/100 << " " << (md-7*(md/10.0))/100 << " " << (p-7*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos4[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-6*(to/10.0), tp-6*(tp/10.0), td-6*(td/10.0), ip-6*(ip/10.0), id-6*(id/10.0), mp-6*(mp/10.0), md-6*(md/10.0), p-6*(p/10.0)};	
-	pos->positionMove(pos4);
-	cout << (to-6*(to/10.0))/100 << " " << (tp-6*(tp/10.0))/100 << " " << (td-6*(td/10.0))/100 << " " << (ip-6*(ip/10.0))/100 << " " << (id-6*(id/10.0))/100 << " " << (mp-6*(mp/10.0))/100 << " " << (md-6*(md/10.0))/100 << " " << (p-6*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos5[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-5*(to/10.0), tp-5*(tp/10.0), td-5*(td/10.0), ip-5*(ip/10.0), id-5*(id/10.0), mp-5*(mp/10.0), md-5*(md/10.0), p-5*(p/10.0)};	
-	pos->positionMove(pos5);
-	cout << (to-5*(to/10.0))/100 << " " << (tp-5*(tp/10.0))/100 << " " << (td-5*(td/10.0))/100 << " " << (ip-5*(ip/10.0))/100 << " " << (id-5*(id/10.0))/100 << " " << (mp-5*(mp/10.0))/100 << " " << (md-5*(md/10.0))/100 << " " << (p-5*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos6[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-4*(to/10.0), tp-4*(tp/10.0), td-4*(td/10.0), ip-4*(ip/10.0), id-4*(id/10.0), mp-4*(mp/10.0), md-4*(md/10.0), p-4*(p/10.0)};	
-	pos->positionMove(pos6);
-	cout << (to-4*(to/10.0))/100 << " " << (tp-4*(tp/10.0))/100 << " " << (td-4*(td/10.0))/100 << " " << (ip-4*(ip/10.0))/100 << " " << (id-4*(id/10.0))/100 << " " << (mp-4*(mp/10.0))/100 << " " << (md-4*(md/10.0))/100 << " " << (p-4*(p/10.0))/100 << endl;	
-	Time::delay(0.01);
-
-	double pos7[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-3*(to/10.0), tp-3*(tp/10.0), td-3*(td/10.0), ip-3*(ip/10.0), id-3*(id/10.0), mp-3*(mp/10.0), md-3*(md/10.0), p-3*(p/10.0)};	
-	pos->positionMove(pos7);
-	cout << (to-3*(to/10.0))/100 << " " << (tp-3*(tp/10.0))/100 << " " << (td-3*(td/10.0))/100 << " " << (ip-3*(ip/10.0))/100 << " " << (id-3*(id/10.0))/100 << " " << (mp-3*(mp/10.0))/100 << " " << (md-3*(md/10.0))/100 << " " << (p-3*(p/10.0))/100 << endl;
-	Time::delay(0.01);
-
-	double pos8[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-2*(to/10.0), tp-2*(tp/10.0), td-2*(td/10.0), ip-2*(ip/10.0), id-2*(id/10.0), mp-2*(mp/10.0), md-2*(md/10.0), p-2*(p/10.0)};
-	pos->positionMove(pos8);
-	cout << (to-2*(to/10.0))/100 << " " << (tp-2*(tp/10.0))/100 << " " << (td-2*(td/10.0))/100 << " " << (ip-2*(ip/10.0))/100 << " " << (id-2*(id/10.0))/100 << " " << (mp-2*(mp/10.0))/100 << " " << (md-2*(md/10.0))/100 << " " << (p-2*(p/10.0))/100 << endl;
-	Time::delay(0.01);
-
-	double pos9[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to-(to/10.0), tp-(tp/10.0), td-(td/10.0), ip-(ip/10.0), id-(id/10.0), mp-(mp/10.0), md-(md/10.0), p-(p/10.0)};	
-	pos->positionMove(pos9);
-	cout << (to-(to/10.0))/100 << " " << (tp-(tp/10.0))/100 << " " << (td-(td/10.0))/100 << " " << (ip-(ip/10.0))/100 << " " << (id-(id/10.0))/100 << " " << (mp-(mp/10.0))/100 << " " << (md-(md/10.0))/100 << " " << (p-(p/10.0))/100 << endl;
-	Time::delay(0.01);
-
-	double pos10[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to, tp, td, ip, id, mp, md, p};	
-	pos->positionMove(pos10);
-	Time::delay(3.0);
-	cout << to/100 << " " << tp/100 << " " << td/100 << " " << ip/100 << " " << id/100 << " " << mp/100 << " " << md/100 << " " << p/100 << endl;
-	Time::delay(0.01);
-*/
-
 	// Set the end joint positions according to the object currently being viewed
 	if (area > 650.0) {
 		sp = -47.0; sr = 0.0; sy = 7.0; elbw = 8.0; wpro = 90.0; wptch = -30.0; wy = -15.0; fabd = 0.0;
@@ -604,43 +512,40 @@ int main(int argc, char* argv[])
 	pos->positionMove(posInit);
 	Time::delay(1.5);
 
-/*
-	FILE *DATA;
-	if (area == bigBallArea) {
-		cout << "Seeing a big ball" << endl;
-		DATA = fopen("data/graspBigBallOutputs.data", "r" );
-		if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}			
-	} 
-	if (area == bigBoxArea) {
-		cout << "Seeing a big box" << endl;
-		DATA = fopen("data/graspBigBoxOutputs.data", "r" );
-		if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}	
-	}
-	if (area == smallBallArea) {
-		cout << "Seeing a small ball" << endl;
-		DATA = fopen("data/graspSmallBallOutputs.data", "r" );
-		if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}	
-	}
-	if (area == smallBoxArea) {
-		cout << "Seeing a small box" << endl;
-		DATA = fopen("data/graspSmallBoxOutputs.data", "r" );
-		if (!DATA) {std::cout << "can't open hand file for reading 0\n" << std::endl; exit(1);}	
-	}
+	// Load SOMs
+	IT_net = loadXML("data/IT_SOM.xml");
+	MT_net = loadXML("data/MT_SOM.xml");
+	PFC_net = loadXML("data/PFC_SOM.xml");
 
-	// --- READ the data from the file
-	for (int line = 0; line < 10; line++) {		
-		fscanf(DATA, "%lf %lf %lf %lf %lf %lf %lf %lf", &to, &tp, &td, &ip, &id, &mp, &md, &p); 
-		double positionChange[] = {sp, sr, sy, elbw, wpro, wptch, wy, fabd, to*100, tp*100, td*100, ip*100, id*100, mp*100, md*100, p*100};
-		pos->positionMove(positionChange);
-		cout << to << "  " << tp << "  " << td << "  " << ip << "  " << id << "  " << mp << "  " << md << "  " << p << endl;	
-		Time::delay(0.2);
-	}
+	IT_input = (SimpleCluster*)IT_net->getByName("IT_input");
+	IT_m1 = (CompetitiveCluster*)IT_net->getByName("IT_map");
+	IT_l1 = (NormLinker*)IT_net->getByName("IT_link");
 
-	fclose(DATA);
-*/
+	MT_input = (SimpleCluster*)MT_net->getByName("MT_input");
+	MT_m1 = (CompetitiveCluster*)MT_net->getByName("MT_map");
+	MT_l1 = (NormLinker*)MT_net->getByName("MT_link");
+	
+	PFC_input = (SimpleCluster*)PFC_net->getByName("PFC_input");
+	PFC_m1 = (CompetitiveCluster*)PFC_net->getByName("PFC_map");
+	PFC_l1 = (NormLinker*)PFC_net->getByName("PFC_link");
 
-	// --- LOAD THE NEURAL NET VIA XML 	//net = loadXML("data/jordanNet-8outputs.xml");
-	net = loadXML("data/jordanNet2.xml"); //-16out-4o-4s-learn0.055.xml");
+	const ClusterVec& cl = IT_net->clusters();
+	for( nnfw::u_int i=0; i<cl.size(); i++ ){                
+    	 cl[i]->inputs().zeroing();
+    	 cl[i]->outputs().zeroing();                                
+ 	}
+	const ClusterVec& cl0 = MT_net->clusters();
+	for( nnfw::u_int i=0; i<cl0.size(); i++ ){                
+    	 cl0[i]->inputs().zeroing();
+    	 cl0[i]->outputs().zeroing();                                
+ 	}
+	const ClusterVec& cl2 = PFC_net->clusters();
+	for( nnfw::u_int i=0; i<cl2.size(); i++ ){                
+    	 cl2[i]->inputs().zeroing();
+    	 cl2[i]->outputs().zeroing();                                
+ 	}
+
+	// --- LOAD THE NEURAL NET VIA XML 	net = loadXML("data/renormalised/12000/jordanSOMNet3.xml"); 
 
 	// --- SET THE DIFFERENT LAYERS ACCORDINGLY
 	in = (BiasedCluster*)net->getByName("Input");
@@ -653,14 +558,66 @@ int main(int argc, char* argv[])
 	l3 = (DotLinker*)net->getByName("Hid2Out");
 	cl1 = (CopyLinker*)net->getByName("Out2Cont");	
 
-	const ClusterVec& cl = net->clusters();
-	for( nnfw::u_int i=0; i<cl.size(); i++ ){                
-    	 cl[i]->inputs().zeroing();
-    	 cl[i]->outputs().zeroing();                                
+	const ClusterVec& cl3 = net->clusters();
+	for( nnfw::u_int i=0; i<cl3.size(); i++ ){                
+    	 cl3[i]->inputs().zeroing();
+    	 cl3[i]->outputs().zeroing();                                
  	}
 
-	for (int input=0; input<(int)in->numNeurons(); input++) 
-		in->setInput(input,visionInput[input]);
+	RealVec Data = in->numNeurons();
+	RealVec PFC_Data = PFC_input->numNeurons();
+	RealVec IT_Data = IT_input->numNeurons();
+	RealVec MT_Data = MT_input->numNeurons();
+
+	//int task = 1; // 0 = perform normal grasp; 1 = perform categorisation grasp (power for ball, precision for box)
+	int task;
+	cout << "Enter the instruction, where:\n 0 = grasp\n 1 = categorise\n";
+	cout << "Instruction: ";	
+	cin >> task;
+
+	if (task == 0) {memcpy(expInstr, ExpInstr_Graps, sizeof(int)*2);}
+	if (task==1) {memcpy(expInstr, ExpInstr_Cat, sizeof(int)*2);}
+
+	// Set experimenter instruction as input for MT SOM		
+	for (int j=0; j<MT_inputSize; j++) {
+		MT_Data[j] = expInstr[j];
+	}
+	// Set visionInput as input for IT SOM
+	for (int j=0; j<IT_inputSize; j++) {
+		IT_Data[j] = visionInput[j];
+	}	
+
+	IT_input->setInputs(IT_Data);
+	IT_net->step();
+	RealVec IT_outputs(IT_m1->numNeurons());
+	IT_outputs = IT_m1->outputs();
+	
+	MT_input->setInputs(MT_Data);
+	MT_net->step();
+	RealVec MT_outputs(MT_m1->numNeurons());
+	MT_outputs = MT_m1->outputs();
+
+	// Take the outputs of IT & MT and feed it to PFC
+	for (int j=0; j<PFC_inputSize; j++) {
+		if (j < 100) {PFC_Data[j] = MT_outputs[j];}
+		else {PFC_Data[j] = IT_outputs[j-100];}
+	}
+		
+	PFC_input->setInputs(PFC_Data);
+	PFC_net->step();	
+	RealVec PFC_outputs(PFC_m1->numNeurons());
+	PFC_outputs = PFC_m1->outputs();
+
+	// Take the vision input and the PFC output to feed into the Jordan net
+	for (int j=0; j<inputSize; j++) {
+		if (j < 100) {Data[j] = PFC_outputs[j];}
+		else {Data[j] = visionInput[j-100];}
+	}
+	in->setInputs(Data);		
+
+
+	//for (int input=0; input<(int)in->numNeurons(); input++) 
+	//	in->setInput(input,visionInput[input]);
 
 	for (int seq = 0; seq < 10; seq++) {	
 		//cout << cont->inputs() << endl;		
@@ -672,8 +629,8 @@ int main(int argc, char* argv[])
 		
 		for (int i=0; i<16; i++) {
 			// Normalise the outputs
-			outputsNorm[i] = ((2 * outputs[i]) - 1)*100;	
-			//outputsNorm[i] = outputs[i]*100;		
+			if (i < 8) {outputsNorm[i] = ((2 * outputs[i]) - 1)*100;}
+			else {outputsNorm[i] = outputs[i]*100;}			
 		}
 
 		double positionGrasp[] = {outputsNorm[0], outputsNorm[1], outputsNorm[2], outputsNorm[3], outputsNorm[4], outputsNorm[5], outputsNorm[6], outputsNorm[7], outputsNorm[8], outputsNorm[9], outputsNorm[10], outputsNorm[11], outputsNorm[12], outputsNorm[13], outputsNorm[14], outputsNorm[15]};

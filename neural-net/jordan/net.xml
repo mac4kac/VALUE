@@ -1,7 +1,7 @@
 <nnfw version="1.0">
     <neuralnet>
         <!-- The Input Layer of the Network -->
-        <cluster name="Input" type="BiasedCluster" size="100" >
+        <cluster name="Input" type="BiasedCluster" size="200" >
             <outfunction type="SigmoidFunction"/>        </cluster>
 
         <!-- The Hidden Layer of the Network -->
