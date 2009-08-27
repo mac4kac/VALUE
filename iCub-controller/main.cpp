@@ -56,9 +56,9 @@ CvMemStorage* storage = 0;
 IplImage *image = 0;
 BufferedPort<ImageOf<PixelRgb> > portInRight;
 
-BiasedCluster *in, *hid, *out;
+BiasedCluster *in, *hid, *outCat, *out;
 SimpleCluster* cont;
-DotLinker *l1, *l2, *l3;
+DotLinker *l1, *l2, *l3, *l4;
 CopyLinker* cl1;
 BaseNeuralNet* net;
 
@@ -539,29 +539,32 @@ int main(int argc, char* argv[])
     	 cl0[i]->inputs().zeroing();
     	 cl0[i]->outputs().zeroing();                                
  	}
-	const ClusterVec& cl2 = PFC_net->clusters();
-	for( nnfw::u_int i=0; i<cl2.size(); i++ ){                
-    	 cl2[i]->inputs().zeroing();
-    	 cl2[i]->outputs().zeroing();                                
+	const ClusterVec& cl3 = PFC_net->clusters();
+	for( nnfw::u_int i=0; i<cl3.size(); i++ ){                
+    	 cl3[i]->inputs().zeroing();
+    	 cl3[i]->outputs().zeroing();                                
  	}
 
-	// --- LOAD THE NEURAL NET VIA XML 	net = loadXML("data/renormalised/12000/jordanSOMNet3.xml"); 
+	// --- LOAD THE NEURAL NET VIA XML 	net = loadXML("data/renormalised/jordanSOMNet.xml"); 
 
 	// --- SET THE DIFFERENT LAYERS ACCORDINGLY
 	in = (BiasedCluster*)net->getByName("Input");
 	cont = (SimpleCluster*)net->getByName("Context");
 	hid = (BiasedCluster*)net->getByName("Hidden");
+	outCat = (BiasedCluster*)net->getByName("OutputCat");
 	out = (BiasedCluster*)net->getByName("Output");
 	
 	l1 = (DotLinker*)net->getByName("In2Hid");
 	l2 = (DotLinker*)net->getByName("Cont2Hid");
-	l3 = (DotLinker*)net->getByName("Hid2Out");
+	l3 = (DotLinker*)net->getByName("Hid2OutCat");
+	l4 = (DotLinker*)net->getByName("Hid2Out");
+	//cl1 = (CopyLinker*)net->getByName("OutCat2Cont");	
 	cl1 = (CopyLinker*)net->getByName("Out2Cont");	
-
-	const ClusterVec& cl3 = net->clusters();
-	for( nnfw::u_int i=0; i<cl3.size(); i++ ){                
-    	 cl3[i]->inputs().zeroing();
-    	 cl3[i]->outputs().zeroing();                                
+	
+	const ClusterVec& cl4 = net->clusters();
+	for( nnfw::u_int i=0; i<cl4.size(); i++ ){                
+    	 cl4[i]->inputs().zeroing();
+    	 cl4[i]->outputs().zeroing();                                
  	}
 
 	RealVec Data = in->numNeurons();
@@ -615,9 +618,11 @@ int main(int argc, char* argv[])
 	}
 	in->setInputs(Data);		
 
-
 	//for (int input=0; input<(int)in->numNeurons(); input++) 
 	//	in->setInput(input,visionInput[input]);
+
+	cout << "Natural = 0, 1; Artefact = 1, 0" << endl;
+
 
 	for (int seq = 0; seq < 10; seq++) {	
 		//cout << cont->inputs() << endl;		
@@ -627,6 +632,11 @@ int main(int argc, char* argv[])
 		RealVec outputs(out->numNeurons());
 		RealVec outputsNorm(out->numNeurons());		outputs = out->outputs();
 		
+		RealVec outputsCat(outCat->numNeurons());
+		outputsCat = outCat->outputs();
+		cout << outputsCat << endl;
+		
+
 		for (int i=0; i<16; i++) {
 			// Normalise the outputs
 			if (i < 8) {outputsNorm[i] = ((2 * outputs[i]) - 1)*100;}

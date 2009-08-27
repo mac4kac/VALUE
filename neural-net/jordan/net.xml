@@ -8,12 +8,17 @@
         <cluster name="Hidden" type="BiasedCluster" size="10">
             <outfunction type="SigmoidFunction"/>        </cluster>
 
-	<!-- The Context Layer of the Network -->
+		<!-- The Context Layer of the Network -->
         <cluster name="Context" type="SimpleCluster" size="16">
             <outfunction type="IdentityFunction"/>
         </cluster>
 
-        <!-- The Output Layer of the Network -->
+        <!-- The Output Layer (Categorisation) of the Network -->
+        <cluster name="OutputCat" type="BiasedCluster" size="2" >
+            <outfunction type="SigmoidFunction"/>
+        </cluster>
+
+        <!-- The Output Layer (Grasping) of the Network -->
         <cluster name="Output" type="BiasedCluster" size="16" >
             <outfunction type="SigmoidFunction"/>
         </cluster>
@@ -26,6 +31,12 @@
 
 	 <!-- Full Connection from Context to Hidden -->
         <linker name="Cont2Hid" type="MatrixLinker" from="Context" to="Hidden">
+            <!-- Randomize the values of weights in the range specified -->
+            <randomize min="-1.0" max="+1.0" />
+        </linker>
+
+        <!-- Full Connection from Hidden to OuputCat -->
+        <linker name="Hid2OutCat" type="MatrixLinker" from="Hidden" to="OutputCat">
             <!-- Randomize the values of weights in the range specified -->
             <randomize min="-1.0" max="+1.0" />
         </linker>
@@ -43,8 +54,8 @@
         <!-- Specify which are the Input layers -->
         <inputs> Input </inputs>
         <!-- Specify which are the Output layers -->
-        <outputs> Output </outputs>
+        <outputs> OutputCat Output </outputs>
         <!-- Specify the update order during spreading of the net -->
-        <order> Input In2Hid Context Cont2Hid Hidden Hid2Out Output Out2Cont </order>
+        <order> Input In2Hid Context Cont2Hid Hidden Hid2OutCat Hid2Out OutputCat Output Out2Cont </order>
     </neuralnet>
 </nnfw>

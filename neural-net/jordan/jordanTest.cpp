@@ -31,12 +31,12 @@ using namespace nnfw;
 using namespace std;
 
 //-------- Neural Network Structures
-BiasedCluster *in, *hid, *out;
+BiasedCluster *in, *hid, *outCat, *out;
 SimpleCluster* cont;
-DotLinker *l1, *l2, *l3;
-CopyLinker* cl1;
+DotLinker *l1, *l2, *l3, *l4;
+CopyLinker* cplinker1;
 BaseNeuralNet* net;
-BackPropagationAlgo* bp; 
+BackPropagationAlgo *bp, *bpCat; 
 
 // IT SOM - Object Identity
 BaseNeuralNet* IT_net;
@@ -69,6 +69,10 @@ int expInstr[2];
 
 int ExpInstr_Graps[2]= {0,1};
 int ExpInstr_Cat[2]= {1,0};
+
+int naturalObject[2]= {0,1};
+int artefactObject[2]= {1,0};
+
 
 void testJordan(int i);
 
@@ -163,12 +167,14 @@ int main( int , char*[] ) {
 	in = (BiasedCluster*)net->getByName("Input");
 	cont = (SimpleCluster*)net->getByName("Context");
 	hid = (BiasedCluster*)net->getByName("Hidden");
+	outCat = (BiasedCluster*)net->getByName("OutputCat");
 	out = (BiasedCluster*)net->getByName("Output");
 	
 	l1 = (DotLinker*)net->getByName("In2Hid");
 	l2 = (DotLinker*)net->getByName("Cont2Hid");
-	l3 = (DotLinker*)net->getByName("Hid2Out");
-	cl1 = (CopyLinker*)net->getByName("Out2Cont");	
+	l3 = (DotLinker*)net->getByName("Hid2OutCat");
+	l4 = (DotLinker*)net->getByName("Hid2Out");
+	cplinker1 = (CopyLinker*)net->getByName("Out2Cont");	
 	
 	// --- RANDOMIZE THE NET
 	net->randomize( -1.0, 1.0 );
@@ -177,7 +183,7 @@ int main( int , char*[] ) {
 	rev_ord.assign_reverse(net->order());
 	// --- CREATE THE BACKPROPAGATION ALGORITHM
 	bp = new BackPropagationAlgo (net, rev_ord, learnRate);
-
+	bpCat = new BackPropagationAlgo (net, rev_ord, learnRate);
 
 	// --- LOAD the IT SOM ----------------------------------------------------------------- //
 	IT_net = loadXML("data/IT_SOM.xml");
@@ -234,6 +240,8 @@ int main( int , char*[] ) {
 	FILE *DATA;
 	FILE *f = fopen("results/trainError.data","w"); // fopen("data/SBox/graspingNormSeq.data","w");
 	if (!f) {printf("can't open config file for writing\n");exit(1);}
+	FILE *f1 = fopen("results/categoriseError.data","w"); 
+	if (!f1) {printf("can't open config file for writing\n");exit(1);}
 
 	// --- SETTING UP TRAINING INPUT ------------------------------------------------------------------------------- //
 	int task;	
@@ -241,12 +249,12 @@ int main( int , char*[] ) {
 	int graspSeq; // = -1;
 	int trainingItem; // 3 modes of training: 0 = all PFC outputs set to 0, 1 = grasping task, 2 = categorising task
 
-	int train0 = 3000; //000; //3333; // Number of training instances for each training mode
-	int train1 = 3000; //000; //5000;
+	int train0 = 3000; //3333; // Number of training instances for each training mode
+	int train1 = 3000; //5000;
 	//int train2 = 10000;
 	
-	int numIteration = 12000; //000; //30000; //60000;
-	int firstTrainingPhase = 6000; //0000; //3334; //10000; //numIteration/3;
+	int numIteration = 12000; //30000; //60000;
+	int firstTrainingPhase = 6000; //3334; //10000; //numIteration/3;
 	int secondTrainingPhase = firstTrainingPhase + train0 + train1;
 
 	int trainingInput[numIteration];
@@ -267,7 +275,7 @@ int main( int , char*[] ) {
 	//	trainingInput[secondTrainingPhase+train0+train1+t] = 2;
 
 	//for(int i=0;i<numIteration;++i)
-    //   cout<<trainingInput[i];
+    //  cout<<trainingInput[i];
 	//cout << endl;
 
 	random_shuffle(trainingInput + firstTrainingPhase, trainingInput + secondTrainingPhase);
@@ -288,8 +296,10 @@ int main( int , char*[] ) {
 
 	for (int num = 0; num < numIteration; num++) {
 		objectViewed = Random::flatInt(0,4);
+		//objectViewed = 0;
 		graspSeq = Random::flatInt(0,4);
-		trainingItem = trainingInput[num];
+		//trainingItem = trainingInput[num];
+		trainingItem = 1;
 /*		
 		if (num < firstTrainingPhase) {
 			task  = 0;
@@ -318,6 +328,7 @@ int main( int , char*[] ) {
 			else {task = 0;}
 		
 		//cout << task << "---" << trainingItem << ": " << objectViewed << ": " << graspSeq << endl;
+		//cout << "Object:  " << objectViewed << endl;
 
 		if (num == firstTrainingPhase-1) {cout << "End of Training Phase 1" << endl; testJordan(1);}
 		//if (num == secondTrainingPhase-1) {cout << "End of Training Phase 2" << endl; testJordan(2);}
@@ -371,7 +382,7 @@ int main( int , char*[] ) {
 				if (!DATA) {std::cout << "can't open hand file for reading 3\n" << std::endl; exit(1);}
 			}
 		}
-		if (task == 1) {
+		if (task == 1) { cout << "Categorise ";
 			memcpy(expInstr, ExpInstr_Cat, sizeof(int)*2);
 			
 			if (objectViewed == 0) {
@@ -487,24 +498,146 @@ int main( int , char*[] ) {
 		//	else {Data[j] = visionInput[j-100];}
 		//}
 	
-		in->setInputs(Data);	
+		in->setInputs(Data);
+/*
+		Real weightsOutCat;
+		Real weightsOut;
+//		Realvec wOutCat(20);		
+//		nnfw::saveXML("results/jordanSOMNet-before.xml",net);
+
+		net->step();	
+
+		for (int i=0; i<10; i++) {
+			for (int j=0; j<2; j++) {
+				weightsOutCat = l3->getWeight(i,j);
+				//if (i<5) {wOutCat[i] = weightsOutCat;}
+				//else {wOutCat[i+10] = weightsOutCat;}
+				cout << weightsOutCat << "  ";	
+			}
+		}
+		cout << endl;
+		cout << endl;
+
+		for (int i=0; i<10; i++) {
+			for (int j=0; j<16; j++) {
+				weightsOut = l4->getWeight(i,j);
+				//if (i<5) {wOutCat[i] = weightsOutCat;}
+				//else {wOutCat[i+10] = weightsOutCat;}
+				cout << weightsOut << "  ";	
+			}
+		}
+		cout << endl;
+		cout << endl;
+*/
+
+		net->step();
+
+		//RealVec tempCombo(cont->numNeurons());
+		//RealVec temp(out->numNeurons());
+		RealVec tempCat(outCat->numNeurons());
+		RealVec targetCategorise(outCat->numNeurons());	
+
+		//temp = out->outputs();
+		tempCat = outCat->outputs();
+
+		for (int i=0; i<outCat->numNeurons(); i++) {
+			// Check whether the object is natural or an artefact
+			if (objectViewed == 0 || objectViewed == 2) 
+				targetCategorise[i] = naturalObject[i];
+			else
+				targetCategorise[i] = artefactObject[i];
+		}
+
+		// Copy outputs from the categorisation and motor neurons to context neurons
+		//for (int i=0; i<cont->numNeurons(); i++) {
+		//	if (i<2) {tempCombo[i]= tempCat[i];}
+		//	else {tempCombo[i] = temp[i-2];}
+		//}
+
+		//cont->setInputs(tempCombo);
+
+//		cout << targetCategorise << endl;
+//		cout << tempCat << endl;
+
+		bpCat->setTeachingInput(outCat,targetCategorise);
+		bpCat->learn();
+/*
+		for (int i=0; i<10; i++) {
+			for (int j=0; j<2; j++) {
+				weightsOutCat = l3->getWeight(i,j);
+				//if (i<5) {wOutCat[i] = weightsOutCat;}
+				//else {wOutCat[i+10] = weightsOutCat;}
+				cout << weightsOutCat << "  ";	
+			}
+		}
+		cout << endl;
+		cout << endl;	
+
+		for (int i=0; i<10; i++) {
+			for (int j=0; j<16; j++) {
+				weightsOut = l4->getWeight(i,j);
+				//if (i<5) {wOutCat[i] = weightsOutCat;}
+				//else {wOutCat[i+10] = weightsOutCat;}
+				cout << weightsOut << "  ";	
+			}
+		}
+		cout << endl;
+		cout << endl;
 	
+*/
+//		cout << targetCategorise << endl;
+//		cout << tempCat << endl;
+//		error = bp->getError(outCat);
+
+		// --- PRINT errors
+		RealVec deltasCat(outCat->numNeurons());
+		RealVec MSECat(outCat->numNeurons());
+		MSECat.zeroing();	
+		deltasCat.zeroing();
+		deltasCat = targetCategorise;			
+		deltasCat-=tempCat; // calculate delta (difference from output to target)			
+		MSECat+=deltasCat.square(); // square the delta for one line of input
+		RealVec RMSECat (outCat->numNeurons());
+		float RMSEavCat = 0.0;
+
+		for (int z = 0; z < (int)outCat->numNeurons(); z++) {
+			RMSECat[z] = sqrt(MSECat[z]); // calculate sqrt of MeanSquareError for each output neuron
+			RMSEavCat +=RMSECat[z]; // and add RMSE for each output neuron
+		}
+		RMSEavCat /=outCat->numNeurons(); // average the sqrt MeanSquareError of the output layer for one input
+		fprintf(f1, "%f\n", RMSEavCat); 
+	
+		cont->resetInputs();
+//		cout << out->outputs() << endl;
+//		cout << cont->inputs() << endl;
+//		cout << endl;
+
 		// --- MAIN LOOP IN ORDER TO LEARN THE TASK 
 		// For each object step the net 10 times --- representing 10 grasping sequences		
 		for (int seq=0; seq<10; seq++) {	
 			net->step();	
 			RealVec temp(out->numNeurons());
 			temp = out->outputs();
-			cont->setInputs(temp);
+
+			// Copy outputs from the categorisation and motor neurons to context neurons
+			//for (int i=0; i<cont->numNeurons(); i++) {
+			//	if (i<2) {tempCombo[i]= tempCat[i];}
+			//else {tempCombo[i] = temp[i-2];}
+			//}
+
+			//cont->setInputs(tempCombo);
+//			cont->setInputs(temp);
+
+		
 			RealVec target(out->numNeurons());			
 
 			for (int i=0; i<(int)out->numNeurons(); i++) 
 				target[i] = targetOutput[seq][i];
 
-			//cout << target << endl;
 			bp->setTeachingInput(out,target);
 			bp->learn();
 		
+			// Calculate error
 			if (num % 500 == 0) {			
 				// --- PRINT errors
 				RealVec deltas(out->numNeurons());
@@ -543,11 +676,12 @@ int main( int , char*[] ) {
 				//cout << RMSEav << endl;	
 			} 
 		} //cout << endl;
+
 		cont->resetInputs();
 		fclose(DATA);
-
 	}
 	fclose(f);
+
 	nnfw::saveXML("results/jordanSOMNet.xml",net);
 	testJordan(2);	
 	cout << "BBall: " << bbal << "\nBBox: " << bbox << "\nSBall: " << sbal << "\nSBox: " << sbox << endl;
@@ -772,6 +906,11 @@ void testJordan(int testPhase) {
 				// --- MAIN LOOP IN ORDER TO LEARN THE TASK 
 				//for (int input=0; input<(int)in->numNeurons(); input++)
 				//	in->setInput(input,visionInput[input]);
+
+				net->step();
+				RealVec outputsCat(outCat->numNeurons());
+				outputsCat = outCat->outputs();
+				cout << outputsCat << endl;
 
 				for (int seq=0; seq<10; seq++) {		
 					net->step();
