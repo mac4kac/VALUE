@@ -545,7 +545,7 @@ int main(int argc, char* argv[])
     	 cl3[i]->outputs().zeroing();                                
  	}
 
-	// --- LOAD THE NEURAL NET VIA XML 	net = loadXML("data/renormalised/jordanSOMNet.xml"); 
+	// --- LOAD THE NEURAL NET VIA XML 	net = loadXML("data/renormalised/4thSept/jordanSOMNet3_2.xml"); 
 
 	// --- SET THE DIFFERENT LAYERS ACCORDINGLY
 	in = (BiasedCluster*)net->getByName("Input");
